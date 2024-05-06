@@ -1,0 +1,61 @@
+---
+- name: Intro to Ansible Playbooks
+  hosts: all
+  become: yes
+  vars:
+    github_owner: 'gnmeyer'
+    github_repo: 'learn-ansible'
+
+  tasks:
+  - name: Update system packages
+    apt:
+      state: latest
+      update_cache: yes
+
+  - name: Install necessary packages
+    apt:
+      name:
+        - curl
+        - jq
+
+  - name: Make runner directory
+    ansible.builtin.file:
+      path: /runner
+      state: directory
+
+  - name: Change permissions of actions-runner directory
+    file:
+      path: "/runner"
+      mode: '755'
+      recurse: yes
+
+  - name: Download self hosted runner
+    ansible.builtin.get_url:
+      url: "https://github.com/actions/runner/releases/download/v2.316.0/actions-runner-linux-arm64-2.316.0.tar.gz"
+      dest: /tmp/actions-runner-linux-arm64-2.316.0.tar.gz
+
+  - name: Extract self hosted runner
+    ansible.builtin.unarchive:
+      src: /tmp/actions-runner-linux-arm64-2.316.0.tar.gz
+      dest: /runner
+      mode: '777'
+      remote_src: yes
+
+  - name: Check if runner is already configured
+    stat:
+      path: "/runner/.runner"
+    register: runner_status
+
+  - name: Configure runner
+    become: no # Do not run as root
+    command: "./config.sh --url https://github.com/{{ github_owner }}/{{ github_repo}} --token {{ lookup('ansible.builtin.env', 'RUNNER_TOKEN') }} --unattended"
+    args:
+        chdir: "/runner"
+    when: not runner_status.stat.exists
+
+
+  - name: Run runner
+    become: no #Do not run as root
+    command: ./run.sh
+    args:
+        chdir: "/runner"
